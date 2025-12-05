@@ -1,9 +1,3 @@
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 /**
  * 将文档内容分割成小块
  * @param content 文档内容
@@ -52,11 +46,37 @@ export function chunkDocument(
 }
 
 /**
+ * 计算文本的 token 数量（近似值）
+ * @param text 文本内容
+ * @returns token 数量
+ */
+export function estimateTokenCount(text: string): number {
+  // 简单估算：中文约 1 字符 = 1-2 token，英文约 4 字符 = 1 token
+  const chineseCount = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const otherCount = text.length - chineseCount;
+  return Math.ceil(chineseCount * 1.5 + otherCount / 4);
+}
+
+// 懒加载 OpenAI 客户端（只在需要时初始化）
+let openaiClient: import("openai").default | null = null;
+
+async function getOpenAIClient() {
+  if (!openaiClient) {
+    const OpenAI = (await import("openai")).default;
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openaiClient;
+}
+
+/**
  * 使用 OpenAI 生成文本的向量嵌入
  * @param text 要嵌入的文本
  * @returns 向量数组
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
+  const openai = await getOpenAIClient();
   const response = await openai.embeddings.create({
     model: "text-embedding-3-small",
     input: text,
@@ -73,22 +93,11 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
+  const openai = await getOpenAIClient();
   const response = await openai.embeddings.create({
     model: "text-embedding-3-small",
     input: texts,
   });
 
   return response.data.map((item) => item.embedding);
-}
-
-/**
- * 计算文本的 token 数量（近似值）
- * @param text 文本内容
- * @returns token 数量
- */
-export function estimateTokenCount(text: string): number {
-  // 简单估算：中文约 1 字符 = 1-2 token，英文约 4 字符 = 1 token
-  const chineseCount = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
-  const otherCount = text.length - chineseCount;
-  return Math.ceil(chineseCount * 1.5 + otherCount / 4);
 }
