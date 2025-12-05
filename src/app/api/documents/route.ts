@@ -3,6 +3,13 @@ import { createClient } from "@supabase/supabase-js";
 import { chunkDocument, estimateTokenCount } from "@/lib/rag/embeddings";
 import { Database } from "@/types/database";
 
+// 调试日志
+console.log("=== Documents API Environment Check ===");
+console.log("SUPABASE_URL:", process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 30) + "...");
+console.log("ANON_KEY starts with:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.substring(0, 20) + "...");
+console.log("SERVICE_KEY starts with:", process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20) + "...");
+console.log("DEMO_MODE:", process.env.DEMO_MODE);
+
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -89,7 +96,7 @@ export async function POST(request: NextRequest) {
     if (docError) {
       console.error("Create document error:", docError);
       return NextResponse.json(
-        { error: "创建文档失败" },
+        { error: `创建文档失败: ${docError.message}` },
         { status: 500 }
       );
     }
@@ -128,8 +135,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Create document error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "创建文档服务出错" },
+      { error: `创建文档服务出错: ${errorMessage}` },
       { status: 500 }
     );
   }
