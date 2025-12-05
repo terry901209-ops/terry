@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { chunkDocument, generateEmbeddings, estimateTokenCount } from "@/lib/rag/embeddings";
+import { chunkDocument, estimateTokenCount } from "@/lib/rag/embeddings";
 import { Database } from "@/types/database";
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+// 检查是否为演示模式（无有效 OpenAI API Key）
+const isDemoMode = !process.env.OPENAI_API_KEY ||
+  process.env.OPENAI_API_KEY === "your-openai-api-key-here" ||
+  process.env.DEMO_MODE === "true";
 
 // 获取文档列表
 export async function GET(request: NextRequest) {
@@ -92,22 +97,13 @@ export async function POST(request: NextRequest) {
     // 2. 分块文档内容
     const chunks = chunkDocument(content);
 
-    // 3. 生成向量嵌入
-    let embeddings: number[][] = [];
-    try {
-      embeddings = await generateEmbeddings(chunks);
-    } catch (embError) {
-      console.error("Embedding generation error:", embError);
-      // 向量化失败不影响文档创建，后续可重试
-    }
-
-    // 4. 保存文档块和向量
+    // 3. 保存文档块（演示模式下跳过向量化）
     if (chunks.length > 0) {
       const chunkRecords = chunks.map((chunkContent, index) => ({
         document_id: document.id,
         chunk_index: index,
         content: chunkContent,
-        embedding: embeddings[index] || null,
+        embedding: null, // 演示模式下不生成向量
         token_count: estimateTokenCount(chunkContent),
         metadata: {
           title,
@@ -127,7 +123,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       document,
       chunksCreated: chunks.length,
-      vectorized: embeddings.length > 0,
+      vectorized: false,
+      demoMode: isDemoMode,
     });
   } catch (error) {
     console.error("Create document error:", error);
@@ -176,7 +173,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // 2. 如果内容改变，重新向量化
+    // 2. 如果内容改变，重新分块
     if (content) {
       // 删除旧的文档块
       await supabase
@@ -184,22 +181,15 @@ export async function PUT(request: NextRequest) {
         .delete()
         .eq("document_id", id);
 
-      // 重新分块和向量化
+      // 重新分块（演示模式下跳过向量化）
       const chunks = chunkDocument(content);
-      let embeddings: number[][] = [];
-
-      try {
-        embeddings = await generateEmbeddings(chunks);
-      } catch (embError) {
-        console.error("Embedding generation error:", embError);
-      }
 
       if (chunks.length > 0) {
         const chunkRecords = chunks.map((chunkContent, index) => ({
           document_id: id,
           chunk_index: index,
           content: chunkContent,
-          embedding: embeddings[index] || null,
+          embedding: null, // 演示模式下不生成向量
           token_count: estimateTokenCount(chunkContent),
           metadata: {
             title: title || document.title,
